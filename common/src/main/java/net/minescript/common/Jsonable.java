@@ -8,7 +8,7 @@ import com.google.gson.JsonElement;
 
 public abstract class Jsonable {
   public JsonElement toJson() {
-    return new GsonBuilder().serializeNulls().create().toJsonTree(this);
+    return new GsonBuilder().serializeNulls().serializeSpecialFloatingPointValues().create().toJsonTree(this);
   }
 
   @Override
