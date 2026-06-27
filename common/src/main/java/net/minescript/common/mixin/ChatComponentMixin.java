@@ -30,6 +30,16 @@ public class ChatComponentMixin {
   }
 
   @Inject(
+          at = @At("HEAD"),
+          method = "addServerSystemMessage(Lnet/minecraft/network/chat/Component;)V",
+          cancellable = true)
+  private void addServerSystemMessage(Component message, CallbackInfo ci) {
+    if (Minescript.onClientChatReceived(message)) {
+      ci.cancel();
+    }
+  }
+
+  @Inject(
       at = @At("HEAD"),
       method =
           "addPlayerMessage(Lnet/minecraft/network/chat/Component;Lnet/minecraft/network/chat/MessageSignature;Lnet/minecraft/client/multiplayer/chat/GuiMessageTag;)V",
