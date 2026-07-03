@@ -49,7 +49,7 @@ public class ScriptValue {
 
   public static <T> ScriptValue ofNullables(T[] value) {
     return new ScriptValue(
-        value, () -> new GsonBuilder().serializeNulls().create().toJsonTree(value));
+        value, () -> new GsonBuilder().serializeNulls().serializeSpecialFloatingPointValues().create().toJsonTree(value));
   }
 
   public static ScriptValue fromJson(JsonElement value) {
