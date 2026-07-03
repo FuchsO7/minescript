@@ -1,3 +1,14 @@
+### About this Fork
+This repository is a fork of [Minescript](https://github.com/maxuser0/minescript/).
+
+#### Changes
+- Added Server System Message Mixin
+  - This allows the Chat Event Listener to also react to Server System Messages
+- Allowed Special Floating Point Values in Jsonable Serialization
+  - This fixes a rare issue where the get_entities() function would raise an exception if there is an entity whose data apparently contains NaN
+- Set World Listener Thread to be Daemon
+  - Apparently the World Listener Thread continued running after closing the game, with this change it automatically stops with the game
+
 # Minescript
 
 ## Introduction
