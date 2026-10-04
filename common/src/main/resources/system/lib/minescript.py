@@ -290,9 +290,6 @@ def player_inventory_slot_to_hotbar(slot: int) -> int:
   Returns:
     hotbar slot (0-8) into which the inventory item was swapped
 
-  Update in mc1.21.4:
-    No longer supported because ServerboundPickItemPacket was removed in Minecraft 1.21.4.
-
   Update in v4.0:
     Removed `done_callback` arg. Use `player_inventory_slot_to_hotbar.as_async(...)`
     for async execution.
@@ -784,6 +781,7 @@ class WorldInfo:
   difficulty: str
   name: str
   address: str
+  dimension: str
 
 def world_info() -> WorldInfo:
   """Gets world properties.
@@ -800,6 +798,9 @@ def world_info() -> WorldInfo:
   Returns:
     `WorldInfo`
 
+  Update in v5.0:
+    Added `dimension` field to `WorldInfo`.
+
   Since: v4.0
   """
   return ()
@@ -808,6 +809,41 @@ def _world_info_result_transform(info):
   return WorldInfo(**info)
 
 world_info = ScriptFunction("world_info", world_info, _world_info_result_transform)
+
+
+@dataclass
+class ScoreboardEntry:
+  name: str
+  score: int
+  display_name: str
+
+@dataclass
+class ScoreboardData:
+  objective_name: str
+  display_name: str
+  entries: List['ScoreboardEntry']
+
+def get_scoreboard() -> ScoreboardData:
+  """Gets the scoreboard data displayed on the sidebar.
+
+  Returns:
+    `ScoreboardData` with objective name, display name, and list of entries,
+    or `None` if no scoreboard is displayed on the sidebar.
+
+  Since: v5.0
+  """
+  return ()
+
+def _get_scoreboard_result_transform(data):
+  if data is None:
+    return None
+  entries = [ScoreboardEntry(**e) for e in data['entries']]
+  return ScoreboardData(
+      objective_name=data['objective_name'],
+      display_name=data['display_name'],
+      entries=entries)
+
+get_scoreboard = ScriptFunction("get_scoreboard", get_scoreboard, _get_scoreboard_result_transform)
 
 
 def getblock(x: int, y: int, z: int) -> str:
@@ -2315,6 +2351,9 @@ class BlockPacker:
       self._flush_blocks()
 
   def _flush_blocks(self):
+    if self.offset is None:
+      return
+
     if sys.byteorder != "big":
       # Swap to network (big-endian) byte order.
       self.setblocks.byteswap()

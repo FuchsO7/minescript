@@ -860,6 +860,7 @@ is specified.
 - [`get_block`](#get_block)
 - [`get_block_list`](#get_block_list)
 - [`get_block_region`](#get_block_region)
+- [`get_scoreboard`](#get_scoreboard)
 - [`getblock`](#getblock)
 - [`getblocklist`](#getblocklist)
 - [`HandItems`](#handitems)
@@ -931,6 +932,8 @@ is specified.
 - [`RenderEvent`](#renderevent)
 - [`Rotation`](#rotation)
 - [`Rotations`](#rotations)
+- [`ScoreboardData`](#scoreboarddata)
+- [`ScoreboardEntry`](#scoreboardentry)
 - [`screen_name`](#screen_name)
 - [`screenshot`](#screenshot)
 - [`ServerboundPacketEvent`](#serverboundpacketevent)
@@ -1169,9 +1172,6 @@ Swaps an inventory item into the hotbar.
 *Returns:*
 
 - hotbar slot (0-8) into which the inventory item was swapped
-
-Update in mc1.21.4:
-  No longer supported because ServerboundPickItemPacket was removed in Minecraft 1.21.4.
 
 Update in v4.0:
   Removed `done_callback` arg. Use `player_inventory_slot_to_hotbar.as_async(...)`
@@ -1594,6 +1594,7 @@ Since: v4.0
   difficulty: str
   name: str
   address: str
+  dimension: str
 ```
 
 #### world_info
@@ -1614,7 +1615,39 @@ Renamed from `world_properties()` from v3.1.
 
 - [`WorldInfo`](#worldinfo)
 
+Update in v5.0:
+  Added `dimension` field to [`WorldInfo`](#worldinfo).
+
 Since: v4.0
+
+
+#### ScoreboardEntry
+
+```
+  name: str
+  score: int
+  display_name: str
+```
+
+#### ScoreboardData
+
+```
+  objective_name: str
+  display_name: str
+  entries: List['ScoreboardEntry']
+```
+
+#### get_scoreboard
+*Usage:* <code>get_scoreboard() -> [ScoreboardData](#scoreboarddata)</code>
+
+Gets the scoreboard data displayed on the sidebar.
+
+*Returns:*
+
+- [`ScoreboardData`](#scoreboarddata) with objective name, display name, and list of entries,
+  or `None` if no scoreboard is displayed on the sidebar.
+
+Since: v5.0
 
 
 #### getblock

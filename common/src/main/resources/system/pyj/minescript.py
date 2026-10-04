@@ -11,6 +11,11 @@
 Minescript standard library for Pyjinn scripts.
 """
 
+if "__script__" not in globals():
+  raise ImportError(
+      "system.pyj.minescript is only available to Pyjinn scripts (.pyj); "
+      "Python scripts should use `import minescript`")
+
 import system.pyj.sys as sys
 
 if "Pyjinn" not in sys.version:
@@ -199,6 +204,24 @@ def player_inventory() -> List[ItemStack]:
   Since: v2.0
   """
   return __mcall__("player_inventory", [])
+
+
+def player_inventory_slot_to_hotbar(slot: int) -> int:
+  """Swaps an inventory item into the hotbar.
+
+  Args:
+    slot: inventory slot (9 or higher) to swap into the hotbar
+
+  Returns:
+    hotbar slot (0-8) into which the inventory item was swapped
+
+  Update in v4.0:
+    Removed `done_callback` arg. Use `player_inventory_slot_to_hotbar.as_async(...)`
+    for async execution.
+
+  Since: v3.0
+  """
+  return __mcall__("player_inventory_slot_to_hotbar", [slot])
 
 
 def player_inventory_select_slot(slot: int) -> int:
@@ -568,6 +591,18 @@ def world_info() -> WorldInfo:
   Since: v4.0
   """
   return __mcall__("world_info", [])
+
+
+def get_scoreboard() -> ScoreboardData:
+  """Gets the scoreboard data displayed on the sidebar.
+
+  Returns:
+    `ScoreboardData` with objective name, display name, and list of entries,
+    or `None` if no scoreboard is displayed on the sidebar.
+
+  Since: v5.0
+  """
+  return __mcall__("get_scoreboard", [])
 
 
 def getblock(x: int, y: int, z: int) -> str:

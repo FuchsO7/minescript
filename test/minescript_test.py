@@ -462,6 +462,11 @@ def blockpack_test():
   comments = blockpack.comments()
   expect_equal({"hello": "world", "foo": "bar"}, comments)
 
+  blockpacker = minescript.BlockPacker()
+  blockpacker.add_blockpack(blockpack)
+  repacked_blockpack = blockpacker.pack()
+  expect_equal(blockpack.block_bounds(), repacked_blockpack.block_bounds())
+
 
 @test
 def await_loaded_region_test():
@@ -501,6 +506,62 @@ def player_hand_items_test():
 @test
 def player_inventory_test():
   expect_equal(list, type(minescript.player_inventory()))
+
+
+@test
+def player_inventory_slot_to_hotbar_test():
+  def items_by_slot():
+    return {item.slot: item for item in minescript.player_inventory()}
+
+  def contents(item):
+    return None if item is None else (item.item, item.count, item.nbt)
+
+  inventory_slot = 9
+  before = items_by_slot()
+  hotbar_slot = None
+  try:
+    hotbar_slot = minescript.player_inventory_slot_to_hotbar(inventory_slot)
+    expect_true(0 <= hotbar_slot <= 8)
+    after_swap = items_by_slot()
+    expect_equal(contents(before.get(inventory_slot)), contents(after_swap.get(hotbar_slot)))
+    expect_equal(contents(before.get(hotbar_slot)), contents(after_swap.get(inventory_slot)))
+  finally:
+    if hotbar_slot is not None:
+      restored_hotbar_slot = minescript.player_inventory_slot_to_hotbar(inventory_slot)
+
+  expect_equal(hotbar_slot, restored_hotbar_slot)
+  restored = items_by_slot()
+  expect_equal(contents(before.get(inventory_slot)), contents(restored.get(inventory_slot)))
+  expect_equal(contents(before.get(hotbar_slot)), contents(restored.get(hotbar_slot)))
+
+
+@test  
+def player_inventory_components_test():
+  Minecraft = java.JavaClass("net.minecraft.client.Minecraft")
+  ItemStack = java.JavaClass("net.minecraft.world.item.ItemStack")
+  Items = java.JavaClass("net.minecraft.world.item.Items")
+  Registries = java.JavaClass("net.minecraft.core.registries.Registries")
+  Enchantments = java.JavaClass("net.minecraft.world.item.enchantment.Enchantments")
+
+  minecraft = Minecraft.getInstance()
+  inventory = minecraft.player.getInventory()
+  selected_slot = inventory.getSelectedSlot()
+  original_item = inventory.getItem(selected_slot).copy()
+
+  enchanted_sword = ItemStack(Items.WOODEN_SWORD)
+  enchantments = minecraft.level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT)
+  enchanted_sword.enchant(enchantments.getOrThrow(Enchantments.SHARPNESS), 2)
+
+  try:
+    inventory.setItem(selected_slot, enchanted_sword)
+    selected_item = next(
+        item for item in minescript.player_inventory() if item.slot == selected_slot)
+    expect_equal("minecraft:wooden_sword", selected_item.item)
+    expect_true(selected_item.nbt is not None)
+    expect_contains(selected_item.nbt, '"minecraft:enchantments"')
+    expect_contains(selected_item.nbt, '"minecraft:sharpness":2')
+  finally:
+    inventory.setItem(selected_slot, original_item)
 
 
 @test
@@ -574,13 +635,17 @@ def screenshot_test():
 
 @test
 def player_targeted_block_test():
-  # Record player orientation then look down for the targeted block test since player is likely to
-  # have ground beneath them. Lastly, restore player's original orientation.
-  yaw, pitch = minescript.player_orientation()
-  minescript.player_set_orientation(yaw, 90)
-  max_distance = 400
-  result = minescript.player_get_targeted_block(max_distance)
-  minescript.player_set_orientation(yaw, pitch)
+  # Using the tick loop so state mutations are reflected in subsequent reads. By default, the render
+  # loop can miss state updates.
+  with minescript.tick_loop:
+    # Record player orientation then look down for the targeted block test since player is likely to
+    # have ground beneath them. Lastly, restore player's original orientation.
+    yaw, pitch = minescript.player_orientation()
+    minescript.player_set_orientation(yaw, 90)
+    max_distance = 400
+    result = minescript.player_get_targeted_block(max_distance)
+    minescript.player_set_orientation(yaw, pitch)
+
   expect_true(result is not None)
   expect_equal(len(result[0]), 3)
   expect_equal([type(x) for x in result[0]], [int, int, int])
@@ -668,7 +733,31 @@ def screen_name_test():
 @test
 def world_info_test():
   info = minescript.world_info()
-  expect_equal(len(info.__dict__), 9)
+  expect_equal(len(info.__dict__), 10)
+  expect_startswith(info.dimension, "minecraft:")
+
+
+@test
+def scoreboard_test():
+  scoreboard = minescript.get_scoreboard()
+  if scoreboard is None:
+    print_success("No scoreboard is displayed")
+    return
+
+  expect_equal(minescript.ScoreboardData, type(scoreboard))
+  expect_equal(str, type(scoreboard.objective_name))
+  expect_equal(str, type(scoreboard.display_name))
+  expect_equal(list, type(scoreboard.entries))
+
+  previous_score = None
+  for entry in scoreboard.entries:
+    expect_equal(minescript.ScoreboardEntry, type(entry))
+    expect_equal(str, type(entry.name))
+    expect_equal(int, type(entry.score))
+    expect_equal(str, type(entry.display_name))
+    if previous_score is not None:
+      expect_true(previous_score >= entry.score)
+    previous_score = entry.score
 
 
 @test

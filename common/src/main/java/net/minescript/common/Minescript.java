@@ -71,6 +71,7 @@ import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -91,6 +92,7 @@ import net.minescript.common.events.*;
 import net.minescript.common.mappings.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.lwjgl.sdl.SDLKeyboard;
 import org.pyjinn.interpreter.Script;
 
 public class Minescript {
@@ -247,6 +249,7 @@ public class Minescript {
         "system/exec/install_mappings.pyj", execDir, FileOverwritePolicy.OVERWRITTE);
     copyJarResourceToFile("system/exec/eval.pyj", execDir, FileOverwritePolicy.OVERWRITTE);
     copyJarResourceToFile("system/exec/pyeval.py", execDir, FileOverwritePolicy.OVERWRITTE);
+    copyJarResourceToFile("system/exec/interpreter.pyj", execDir, FileOverwritePolicy.OVERWRITTE);
     copyJarResourceToFile("system/exec/pyinterpreter.py", execDir, FileOverwritePolicy.OVERWRITTE);
   }
 
@@ -1426,13 +1429,13 @@ public class Minescript {
   private static long worldRenderEventCounter = 0;
   private static long clientTickEventCounter = 0;
 
-  private static int BACKSLASH_KEY = 92;
-  private static int ESCAPE_KEY = 256;
-  public static int ENTER_KEY = 257;
-  private static int TAB_KEY = 258;
-  private static int BACKSPACE_KEY = 259;
-  private static int UP_ARROW_KEY = 265;
-  private static int DOWN_ARROW_KEY = 264;
+  private static int BACKSLASH_KEY = InputConstants.KEY_BACKSLASH;
+  private static int ESCAPE_KEY = InputConstants.KEY_ESCAPE;
+  public static int ENTER_KEY = InputConstants.KEY_RETURN;
+  private static int TAB_KEY = InputConstants.KEY_TAB;
+  private static int BACKSPACE_KEY = InputConstants.KEY_BACKSPACE;
+  private static int UP_ARROW_KEY = InputConstants.KEY_UP;
+  private static int DOWN_ARROW_KEY = InputConstants.KEY_DOWN;
 
   private static String insertSubstring(String original, int position, String insertion) {
     return original.substring(0, position) + insertion + original.substring(position);
@@ -1757,13 +1760,19 @@ public class Minescript {
         return cancel;
       }
       int cursorPos = chatEditBox.getCursorPosition();
-      if (key >= 32 && key < 127) {
-        // TODO(maxuser): use chatEditBox.setSuggestion(String) to set suggestion?
-        // TODO(maxuser): detect upper vs lower case properly
-        String extraChar = Character.toString((char) key).toLowerCase();
-        value = insertSubstring(value, cursorPos, extraChar);
-      } else if (key == BACKSPACE_KEY) {
+      if (key == BACKSPACE_KEY) {
         value = eraseChar(value, cursorPos);
+      } else if (key != TAB_KEY
+          && key != ENTER_KEY
+          && (config == null || key != config.secondaryEnterKeyCode())
+          && key != ESCAPE_KEY) {
+        int keycode = SDLKeyboard.SDL_GetKeyFromScancode(key, (short) 0, false);
+        if (keycode >= 32 && keycode < 127) {
+          // TODO(maxuser): use chatEditBox.setSuggestion(String) to set suggestion?
+          // TODO(maxuser): detect upper vs lower case properly
+          String extraChar = Character.toString((char) keycode).toLowerCase();
+          value = insertSubstring(value, cursorPos, extraChar);
+        }
       }
       if (value.stripTrailing().length() > 0) {
         String command = getCompletableCommand(value.substring(1));
@@ -1809,6 +1818,9 @@ public class Minescript {
         if (completions.size() == 1 && hasFullMatch) {
           chatEditBox.setTextColor(0xff5ee85e); // green
           commandSuggestions = new ArrayList<>();
+        } else if (command.isEmpty() || command.equals("\\")) {
+          chatEditBox.setTextColor(0xffaaaaaa); // light gray
+          commandSuggestions = new ArrayList<>();
         } else {
           List<String> newCommandSuggestions = new ArrayList<>();
           newCommandSuggestions.addAll(completions);
@@ -1847,7 +1859,7 @@ public class Minescript {
     var minecraft = Minecraft.getInstance();
     var screen = minecraft.gui.screen();
     if (screen == null && key == BACKSLASH_KEY) {
-      minecraft.gui.setScreen(new ChatScreen("", /* isDraft= */ false));
+      minecraft.gui.setScreen(new ChatScreen("\\", /* isDraft= */ false));
     }
   }
 
@@ -2582,9 +2594,11 @@ public class Minescript {
           args.expectSize(0);
           var handItems = new HandItems();
           handItems.main_hand =
-              ItemStackData.of(player.getMainHandItem(), OptionalInt.empty(), false);
+              ItemStackData.of(
+                  player.getMainHandItem(), OptionalInt.empty(), false, world.registryAccess());
           handItems.off_hand =
-              ItemStackData.of(player.getOffhandItem(), OptionalInt.empty(), false);
+              ItemStackData.of(
+                  player.getOffhandItem(), OptionalInt.empty(), false, world.registryAccess());
           return ScriptValue.of(handItems);
         }
 
@@ -2597,7 +2611,9 @@ public class Minescript {
           for (int i = 0; i < inventory.getContainerSize(); i++) {
             var itemStack = inventory.getItem(i);
             if (itemStack.getCount() > 0) {
-              result.add(ItemStackData.of(itemStack, OptionalInt.of(i), i == selectedSlot));
+              result.add(
+                  ItemStackData.of(
+                      itemStack, OptionalInt.of(i), i == selectedSlot, world.registryAccess()));
             }
           }
           return ScriptValue.of(result.toArray(ItemStackData[]::new));
@@ -2605,9 +2621,20 @@ public class Minescript {
 
       case "player_inventory_slot_to_hotbar":
         {
-          throw new UnsupportedOperationException(
-              "player_inventory_slot_to_hotbar: support for ServerboundPickItemPacket removed in"
-                  + " Minecraft 1.21.4");
+          args.expectSize(1);
+          int slot = args.getStrictInt(0);
+          var inventory = player.getInventory();
+          var menu = player.containerMenu;
+          int menuSlot =
+              menu.findSlot(inventory, slot)
+                  .orElseThrow(
+                      () ->
+                          new IllegalArgumentException(
+                              "Inventory slot " + slot + " is not available in the current menu"));
+          int selectedSlot = inventory.getSelectedSlot();
+          minecraft.gameMode.handleContainerInput(
+              menu.containerId, menuSlot, selectedSlot, ContainerInput.SWAP, player);
+          return ScriptValue.of(selectedSlot);
         }
 
       case "player_inventory_select_slot":
@@ -2672,8 +2699,8 @@ public class Minescript {
           args.expectSize(2);
           Double yaw = args.getDouble(0);
           Double pitch = args.getDouble(1);
-          player.setYRot(yaw.floatValue() % 360.0f);
-          player.setXRot(pitch.floatValue() % 360.0f);
+          player.setYRot(yaw.floatValue());
+          player.setXRot(pitch.floatValue());
           return ScriptValue.TRUE;
         }
 
@@ -2861,6 +2888,53 @@ public class Minescript {
           result.difficulty = difficulty.getSerializedName();
           result.name = getWorldName();
           result.address = serverAddress;
+          var dimensionKey = world.dimension().toString();
+          result.dimension =
+              dimensionKey.substring(dimensionKey.lastIndexOf('/') + 2, dimensionKey.length() - 1);
+          return ScriptValue.of(result);
+        }
+
+      case "get_scoreboard":
+        {
+          args.expectSize(0);
+          var scoreboard = world.getScoreboard();
+          var objective = scoreboard.getDisplayObjective(net.minecraft.world.scores.DisplaySlot.SIDEBAR);
+          if (objective == null) {
+            return ScriptValue.NULL;
+          }
+          var playerScores = scoreboard.listPlayerScores(objective);
+          var entries = new ArrayList<ScoreboardEntry>();
+          for (var playerScore : playerScores) {
+            String owner = playerScore.owner();
+            int score = playerScore.value();
+            // Get the display text by checking if the owner belongs to a team
+            // Servers often use teams to set the visible text via prefix/suffix
+            var team = scoreboard.getPlayersTeam(owner);
+            String displayText;
+            if (team != null) {
+              // Team exists - get prefix + suffix which contains the visible text
+              var prefix = team.getPlayerPrefix();
+              var suffix = team.getPlayerSuffix();
+              String prefixStr = prefix != null ? prefix.getString() : "";
+              String suffixStr = suffix != null ? suffix.getString() : "";
+              displayText = prefixStr + suffixStr;
+              // If still empty, fall back to owner name
+              if (displayText.isEmpty()) {
+                var ownerName = playerScore.ownerName();
+                displayText = ownerName != null ? ownerName.getString() : owner;
+              }
+            } else {
+              // No team - use ownerName if available, otherwise owner
+              var ownerName = playerScore.ownerName();
+              displayText = ownerName != null ? ownerName.getString() : owner;
+            }
+            entries.add(new ScoreboardEntry(owner, score, displayText));
+          }
+          Collections.sort(entries, (a, b) -> Integer.compare(b.score, a.score));
+          var result = new ScoreboardData(
+              objective.getName(),
+              objective.getDisplayName().getString(),
+              entries.toArray(ScoreboardEntry[]::new));
           return ScriptValue.of(result);
         }
 
@@ -2912,7 +2986,9 @@ public class Minescript {
               if (itemStack.isEmpty()) {
                 continue;
               }
-              result.add(ItemStackData.of(itemStack, OptionalInt.of(slot.index), false));
+              result.add(
+                  ItemStackData.of(
+                      itemStack, OptionalInt.of(slot.index), false, world.registryAccess()));
             }
             return ScriptValue.of(result.toArray(ItemStackData[]::new));
           } else {
